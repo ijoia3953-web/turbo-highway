@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Turbo Highway 2D - Car Racing Game</title>
+  <meta name="description" content="2D Retro Car Racing Game with traffic dodging, score tracking, audio effects, and ad monetization.">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,400;0,600;0,700;1,700&display=swap" rel="stylesheet">
+
+  <!-- Google AdSense Placeholder (Test Mode Active) -->
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background-color: #090a0f; color: #f8fafc;
+      font-family: 'Chakra Petch', system-ui, sans-serif;
+      user-select: none; -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+    #game-container {
+      position: relative; width: 100%; height: 100%;
+      display: flex; flex-direction: column; justify-content: space-between;
+    }
+    canvas {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      display: block; z-index: 1;
+    }
+    .hud-overlay {
+      position: absolute; inset: 0; z-index: 10;
+      pointer-events: none; display: flex; flex-direction: column;
+      justify-content: space-between; padding: 16px;
+    }
+    .interactive { pointer-events: auto; }
+    .badge {
+      background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(51, 65, 85, 0.8);
+      border-radius: 10px; padding: 6px 14px; backdrop-filter: blur(4px);
+    }
+    .btn {
+      cursor: pointer; transition: all 0.15s ease; border: none; font-family: inherit;
+    }
+    .btn:active { transform: scale(0.95); }
+
+    /* Modals */
+    .modal-backdrop {
+      position: fixed; inset: 0; z-index: 50;
+      background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center; padding: 16px;
+    }
+    .modal-card {
+      width: 100%; max-width: 440px; background: #0f172a;
+      border: 2px solid #ef4444; border-radius: 24px; padding: 24px;
+      text-align: center; box-shadow: 0 0 40px rgba(239, 68, 68, 0.35);
+    }
+
+    /* Ad Banner at bottom */
+    .ad-banner-slot {
+      position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+      width: calc(100% - 24px); max-width: 728px; min-height: 50px;
+      background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(71, 85, 105, 0.8);
+      border-radius: 12px; z-index: 25; display: flex; align-items: center;
+      justify-content: space-between; padding: 6px 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    }
+
+    /* Interstitial Ad */
+    .interstitial-screen {
+      position: fixed; inset: 0; z-index: 100; background: #000;
+      display: flex; flex-direction: column; justify-content: space-between;
+      padding: 20px; text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="canvas"></canvas>
+
+    <!-- In-Game HUD -->
+    <div id="hud" class="hud-overlay" style="display: none;">
+      <!-- Top Row -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
+        <div class="badge">
+          <div style="font-size: 11px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Score</div>
+          <div id="hud-score" style="font-size: 28px; font-weight: 800; color: #f59e0b; font-variant-numeric: tabular-nums;">0</div>
+          <div style="font-size: 11px; color: #fbbf24;">BEST: <span id="hud-best">0</span></div>
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+          <button id="btn-mute" class="badge btn interactive" style="font-size: 14px; color: #fff;">🔊</button>
+          <button id="btn-pause" class="badge btn interactive" style="font-size: 14px; color: #fff;">⏸️</button>
+        </div>
+      </div>
+
+      <!-- Bottom Row -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; width: 100%; margin-bottom: 70px;">
+        <div class="badge">
+          <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase;">Speed</div>
+          <div style="font-size: 26px; font-weight: 800; color: #fff;"><span id="hud-speed">80</span> <span style="font-size: 12px; color: #94a3b8;">KM/H</span></div>
+        </div>
+
+        <div class="badge" style="min-width: 140px;">
+          <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: #38bdf8; margin-bottom: 4px;">
+            <span>NITRO</span><span id="hud-nitro-val">100%</span>
+          </div>
+          <div style="width: 100%; height: 8px; background: #1e293b; border-radius: 4px; overflow: hidden;">
+            <div id="hud-nitro-bar" style="width: 100%; height: 100%; background: #06b6d4;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Touch Controls -->
+    <div id="touch-controls" style="position: absolute; bottom: 85px; width: 100%; display: flex; justify-content: space-between; padding: 0 16px; pointer-events: none; z-index: 15;">
+      <div style="display: flex; gap: 10px; pointer-events: auto;">
+        <button id="touch-left" class="btn" style="width: 60px; height: 60px; border-radius: 16px; background: rgba(15,23,42,0.85); border: 2px solid #334155; color: #38bdf8; font-size: 24px;">◀</button>
+        <button id="touch-right" class="btn" style="width: 60px; height: 60px; border-radius: 16px; background: rgba(15,23,42,0.85); border: 2px solid #334155; color: #38bdf8; font-size: 24px;">▶</button>
+      </div>
+      <div style="display: flex; gap: 10px; pointer-events: auto;">
+        <button id="touch-brake" class="btn" style="width: 54px; height: 54px; border-radius: 16px; background: rgba(15,23,42,0.85); border: 2px solid #ef4444; color: #f87171; font-size: 11px; font-weight: 800;">BRAKE</button>
+        <button id="touch-boost" class="btn" style="width: 60px; height: 60px; border-radius: 16px; background: linear-gradient(135deg, #0891b2, #0284c7); border: 2px solid #38bdf8; color: #fff; font-size: 12px; font-weight: 800; box-shadow: 0 0 15px rgba(6,182,212,0.4);">BOOST</button>
+      </div>
+    </div>
+
+    <!-- Title Screen -->
+    <div id="title-screen" class="modal-backdrop" style="background: radial-gradient(circle at center, #1e1b4b 0%, #090a0f 100%);">
+      <div style="max-width: 480px; text-align: center;">
+        <div style="font-size: 42px; font-weight: 900; font-style: italic; background: linear-gradient(135deg, #fef08a, #ef4444); -webkit-background-clip: text; -webkit-text-fill-color: transparent; filter: drop-shadow(0 5px 15px rgba(239,68,68,0.4));">
+          TURBO HIGHWAY 2D
+        </div>
+        <p style="color: #cbd5e1; font-size: 14px; margin: 8px 0 18px 0;">
+          سامنے سے آنے والی گاڑیوں سے بچیں اور تیز ترین اسکور بنائیں!
+        </p>
+
+        <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid #334155; border-radius: 16px; padding: 14px; margin-bottom: 20px;">
+          <div style="font-size: 12px; color: #94a3b8; text-transform: uppercase;">Car Selected:</div>
+          <div style="font-size: 18px; font-weight: 700; color: #ef4444; margin: 4px 0;">Red Inferno (ریڈ انفرنو)</div>
+          <div style="font-size: 12px; color: #fbbf24;">High Record: <span id="title-best">0</span></div>
+        </div>
+
+        <button id="btn-start" class="btn" style="width: 100%; padding: 16px; background: linear-gradient(90deg, #ef4444, #f59e0b, #ef4444); color: #fff; font-size: 20px; font-weight: 900; border-radius: 16px; box-shadow: 0 0 25px rgba(239,68,68,0.5);">
+          START RACING / شروع کریں
+        </button>
+
+        <p style="color: #64748b; font-size: 12px; margin-top: 14px;">
+          Controls: Arrow Keys / WASD · Space: Boost · Esc: Pause · M: Mute
+        </p>
+      </div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameover-screen" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div style="font-size: 40px; margin-bottom: 8px;">💥</div>
+        <h2 style="font-size: 32px; font-weight: 900; color: #ef4444; font-style: italic;">CAR CRASHED!</h2>
+        <p style="font-size: 13px; color: #fca5a5; margin-bottom: 16px;">گیم ختم — کھیل مکمل ہوا</p>
+
+        <div style="background: rgba(2, 6, 23, 0.8); border-radius: 16px; padding: 14px; margin-bottom: 16px;">
+          <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Final Score</div>
+          <div id="gameover-score" style="font-size: 42px; font-weight: 900; color: #fbbf24;">0</div>
+          <div style="font-size: 12px; color: #e2e8f0; margin-top: 4px;">Best: <span id="gameover-best">0</span></div>
+        </div>
+
+        <button id="btn-restart" class="btn" style="width: 100%; padding: 14px; background: linear-gradient(90deg, #ef4444, #f59e0b); color: #fff; font-size: 16px; font-weight: 800; border-radius: 14px; margin-bottom: 10px;">
+          PLAY AGAIN (دوبارہ کھیلیں)
+        </button>
+        <button id="btn-menu" class="btn" style="width: 100%; padding: 12px; background: #1e293b; color: #cbd5e1; font-size: 14px; font-weight: 600; border-radius: 14px;">
+          MAIN MENU (مین مینو)
+        </button>
+      </div>
+    </div>
+
+    <!-- Bottom Ad Banner -->
+    <div id="ad-banner" class="ad-banner-slot">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 24px;">🏎️</span>
+        <div>
+          <div style="font-size: 12px; font-weight: 700; color: #fff;">Turbo Racer 3D <span style="font-size: 9px; padding: 1px 4px; background: rgba(245,158,11,0.2); color: #fbbf24; border-radius: 4px;">Ad</span></div>
+          <div style="font-size: 10px; color: #94a3b8;">High speed highway arcade action online!</div>
+        </div>
+      </div>
+      <a href="https://google.com" target="_blank" class="btn" style="padding: 6px 14px; background: #0284c7; color: #fff; font-size: 11px; font-weight: 700; border-radius: 8px; text-decoration: none;">Install</a>
+    </div>
+
+    <!-- Interstitial Ad Screen -->
+    <div id="interstitial-ad" class="interstitial-screen" style="display: none;">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 12px;">
+        <span style="font-size: 13px; color: #fbbf24; font-weight: 700;">Sponsored Interstitial Advertisement</span>
+        <button id="interstitial-close" class="btn" style="padding: 6px 14px; background: #334155; color: #94a3b8; border-radius: 8px; font-size: 12px; font-weight: 700;">Skip in 5s</button>
+      </div>
+
+      <div style="max-width: 500px; margin: auto; padding: 24px; background: #0f172a; border: 2px solid #3b82f6; border-radius: 20px;">
+        <div style="font-size: 48px; margin-bottom: 10px;">⚡</div>
+        <h2 style="font-size: 26px; font-weight: 900; color: #38bdf8; margin-bottom: 8px;">NITRO RUSH: HIGHWAY 3D</h2>
+        <p style="font-size: 13px; color: #94a3b8; margin-bottom: 20px;">Play the top-rated 3D highway racer. Upgrade engines, join online drift tournaments, and climb leaderboards!</p>
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+          <a href="https://google.com" target="_blank" class="btn" style="display: inline-block; padding: 12px 24px; background: linear-gradient(90deg, #ec4899, #8b5cf6); color: #fff; font-weight: 800; border-radius: 12px; text-decoration: none;">DOWNLOAD FREE</a>
+          <button id="interstitial-continue" class="btn" disabled style="padding: 12px 24px; background: #1e293b; color: #64748b; font-weight: 800; border-radius: 12px; cursor: not-allowed; border: 1px solid #334155;">Continue to Game (10s)</button>
+        </div>
+      </div>
+
+      <div style="font-size: 11px; color: #64748b;">Google AdSense & H5 Game Ads Integrated</div>
+    </div>
+  </div>
+
+  <script>
+    // --- Self-contained Sound Manager (Web Audio API) ---
+    class SoundFX {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+        this.engineOsc = null;
+        this.engineGain = null;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) this.ctx = new AudioContext();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+      }
+      startEngine() {
+        this.init();
+        if (!this.ctx || this.engineOsc) return;
+        try {
+          this.engineOsc = this.ctx.createOscillator();
+          this.engineGain = this.ctx.createGain();
+          this.engineOsc.type = 'sawtooth';
+          this.engineOsc.frequency.setValueAtTime(60, this.ctx.currentTime);
+          this.engineGain.gain.setValueAtTime(this.muted ? 0 : 0.06, this.ctx.currentTime);
+          this.engineOsc.connect(this.engineGain);
+          this.engineGain.connect(this.ctx.destination);
+          this.engineOsc.start();
+        } catch(e){}
+      }
+      setEngineSpeed(norm) {
+        if (!this.engineOsc || !this.engineGain || !this.ctx) return;
+        const freq = 50 + norm * 110;
+        this.engineOsc.frequency.setTargetAtTime(freq, this.ctx.currentTime, 0.05);
+        this.engineGain.gain.setTargetAtTime(this.muted ? 0 : 0.06, this.ctx.currentTime, 0.05);
+      }
+      stopEngine() {
+        if (this.engineOsc) {
+          try { this.engineOsc.stop(); this.engineOsc.disconnect(); } catch(e){}
+          this.engineOsc = null;
+        }
+      }
+      playCoin() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.frequency.setValueAtTime(987, this.ctx.currentTime);
+        osc.frequency.setValueAtTime(1318, this.ctx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.31);
+      }
+      playCrash() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(140, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(20, this.ctx.currentTime + 0.5);
+        gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.55);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.6);
+      }
+    }
+    const sfx = new SoundFX();
+
+    // --- Game Setup ---
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    canvas.width = width; canvas.height = height;
+
+    window.addEventListener('resize', () => {
+      width = window.innerWidth; height = window.innerHeight;
+      canvas.width = width; canvas.height = height;
+    });
+
+    let gameState = 'title';
+    let score = 0;
+    let highScore = parseFloat(localStorage.getItem('turbo_highway_highscore') || '0');
+    let speed = 280;
+    let boostFuel = 100;
+    let isBoosting = false;
+    let distance = 0;
+
+    const roadWidth = Math.min(width * 0.88, 440);
+    const roadLeft = (width - roadWidth) / 2;
+    const laneWidth = roadWidth / 4;
+
+    const player = {
+      x: roadLeft + laneWidth * 1.5,
+      y: height - 120,
+      w: 42, h: 80,
+      tilt: 0
+    };
+
+    const keys = { left: false, right: false, up: false, down: false, boost: false };
+    const obstacles = [];
+    const particles = [];
+
+    // --- UI Elements ---
+    const hud = document.getElementById('hud');
+    const hudScore = document.getElementById('hud-score');
+    const hudBest = document.getElementById('hud-best');
+    const hudSpeed = document.getElementById('hud-speed');
+    const hudNitroVal = document.getElementById('hud-nitro-val');
+    const hudNitroBar = document.getElementById('hud-nitro-bar');
+    const titleScreen = document.getElementById('title-screen');
+    const gameoverScreen = document.getElementById('gameover-screen');
+    const interstitial = document.getElementById('interstitial-ad');
+    const interstitialClose = document.getElementById('interstitial-close');
+    const interstitialContinue = document.getElementById('interstitial-continue');
+
+    hudBest.innerText = Math.floor(highScore);
+    document.getElementById('title-best').innerText = Math.floor(highScore);
+
+    // --- Ads Control (10 Seconds Lock) ---
+    let adCountdown = 10;
+    let adTimer = null;
+    function showInterstitialAd(onDone) {
+      interstitial.style.display = 'flex';
+      adCountdown = 10;
+      
+      // Lock top skip button
+      interstitialClose.innerText = 'Skip in 10s';
+      interstitialClose.style.background = '#334155';
+      interstitialClose.style.color = '#94a3b8';
+      interstitialClose.style.cursor = 'not-allowed';
+      interstitialClose.disabled = true;
+
+      // Lock bottom continue button
+      if (interstitialContinue) {
+        interstitialContinue.innerText = 'Continue to Game (10s)';
+        interstitialContinue.style.background = '#1e293b';
+        interstitialContinue.style.color = '#64748b';
+        interstitialContinue.style.cursor = 'not-allowed';
+        interstitialContinue.disabled = true;
+      }
+
+      clearInterval(adTimer);
+      adTimer = setInterval(() => {
+        adCountdown--;
+        if (adCountdown > 0) {
+          interstitialClose.innerText = 'Skip in ' + adCountdown + 's';
+          if (interstitialContinue) {
+            interstitialContinue.innerText = 'Continue to Game (' + adCountdown + 's)';
+          }
+        } else {
+          clearInterval(adTimer);
+          // Unlock top skip button after 10s
+          interstitialClose.innerText = 'Skip Ad ✕';
+          interstitialClose.style.background = '#10b981';
+          interstitialClose.style.color = '#fff';
+          interstitialClose.style.cursor = 'pointer';
+          interstitialClose.disabled = false;
+
+          // Unlock bottom continue button after 10s
+          if (interstitialContinue) {
+            interstitialContinue.innerText = 'Continue to Game (کھیل جاری رکھیں)';
+            interstitialContinue.style.background = 'linear-gradient(90deg, #10b981, #0d9488)';
+            interstitialContinue.style.color = '#fff';
+            interstitialContinue.style.cursor = 'pointer';
+            interstitialContinue.disabled = false;
+          }
+        }
+      }, 1000);
+
+      const closeHandler = () => {
+        if (adCountdown > 0) return; // Prevent any early dismissal
+        clearInterval(adTimer);
+        interstitial.style.display = 'none';
+        if (onDone) onDone();
+      };
+
+      interstitialClose.onclick = closeHandler;
+      if (interstitialContinue) {
+        interstitialContinue.onclick = closeHandler;
+      }
+    }
+
+    // --- Keyboard & Touch ---
+    window.addEventListener('keydown', (e) => {
+      if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
+      if (e.code === 'ArrowUp' || e.code === 'KeyW') keys.up = true;
+      if (e.code === 'ArrowDown' || e.code === 'KeyS') keys.down = true;
+      if (e.code === 'Space') keys.boost = true;
+      if (e.code === 'KeyM') sfx.muted = !sfx.muted;
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+      if (e.code === 'ArrowUp' || e.code === 'KeyW') keys.up = false;
+      if (e.code === 'ArrowDown' || e.code === 'KeyS') keys.down = false;
+      if (e.code === 'Space') keys.boost = false;
+    });
+
+    const bindTouch = (id, prop) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('touchstart', (e) => { e.preventDefault(); keys[prop] = true; });
+      el.addEventListener('touchend', (e) => { e.preventDefault(); keys[prop] = false; });
+      el.addEventListener('mousedown', () => keys[prop] = true);
+      el.addEventListener('mouseup', () => keys[prop] = false);
+    };
+    bindTouch('touch-left', 'left');
+    bindTouch('touch-right', 'right');
+    bindTouch('touch-brake', 'down');
+    bindTouch('touch-boost', 'boost');
+
+    document.getElementById('btn-mute').onclick = () => sfx.muted = !sfx.muted;
+
+    // --- Start / Restart ---
+    function startGame() {
+      titleScreen.style.display = 'none';
+      gameoverScreen.style.display = 'none';
+      hud.style.display = 'flex';
+      score = 0; speed = 280; boostFuel = 100;
+      obstacles.length = 0; particles.length = 0;
+      player.x = roadLeft + laneWidth * 1.5;
+      gameState = 'playing';
+      sfx.startEngine();
+    }
+
+    document.getElementById('btn-start').onclick = () => {
+      startGame();
+    };
+
+    document.getElementById('btn-restart').onclick = () => {
+      showInterstitialAd(startGame);
+    };
+
+    document.getElementById('btn-menu').onclick = () => {
+      gameoverScreen.style.display = 'none';
+      titleScreen.style.display = 'flex';
+      hud.style.display = 'none';
+      gameState = 'title';
+      sfx.stopEngine();
+    };
+
+    // --- Game Loop ---
+    let lastTime = performance.now();
+    let roadOffset = 0;
+    let spawnTimer = 1.0;
+
+    function loop(currentTime) {
+      requestAnimationFrame(loop);
+      const dt = Math.min((currentTime - lastTime) / 1000, 0.05);
+      lastTime = currentTime;
+
+      if (gameState !== 'playing') return;
+
+      // Boost & Speed
+      isBoosting = keys.boost && boostFuel > 0;
+      if (isBoosting) {
+        boostFuel = Math.max(0, boostFuel - 30 * dt);
+      } else {
+        boostFuel = Math.min(100, boostFuel + 6 * dt);
+      }
+
+      const targetSpeed = (isBoosting ? 500 : 320) + (distance / 100) * 0.04;
+      if (keys.up) speed = Math.min(600, speed + 180 * dt);
+      else if (keys.down) speed = Math.max(160, speed - 350 * dt);
+      else speed += (targetSpeed - speed) * 2 * dt;
+
+      sfx.setEngineSpeed((speed - 160) / 400);
+
+      // Steering
+      let moveDir = 0;
+      if (keys.left) moveDir -= 1;
+      if (keys.right) moveDir += 1;
+      player.x += moveDir * 400 * dt;
+      player.tilt += (moveDir * 0.12 - player.tilt) * 10 * dt;
+
+      const minX = roadLeft + player.w / 2 + 8;
+      const maxX = roadLeft + roadWidth - player.w / 2 - 8;
+      if (player.x < minX) player.x = minX;
+      if (player.x > maxX) player.x = maxX;
+
+      // World movement
+      const travel = speed * dt;
+      distance += travel * 0.08;
+      score += travel * 0.15;
+      roadOffset += travel;
+
+      // Spawn oncoming cars
+      spawnTimer -= dt;
+      if (spawnTimer <= 0) {
+        const lane = Math.floor(Math.random() * 4);
+        obstacles.push({
+          x: roadLeft + lane * laneWidth + laneWidth / 2,
+          y: -100, w: 42, h: 76,
+          color: ['#3b82f6', '#8b5cf6', '#ec4899', '#10b981', '#f59e0b'][Math.floor(Math.random()*5)]
+        });
+        spawnTimer = 1.2 + Math.random() * 0.6;
+      }
+
+      // Update obstacles & collisions
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const obs = obstacles[i];
+        obs.y += (speed * 0.6 + 120) * dt;
+
+        // Collision check
+        if (Math.abs(player.x - obs.x) < (player.w / 2 + obs.w / 2 - 6) &&
+            Math.abs(player.y - obs.y) < (player.h / 2 + obs.h / 2 - 8)) {
+          // Crash!
+          sfx.playCrash();
+          sfx.stopEngine();
+          gameState = 'gameover';
+          if (score > highScore) {
+            highScore = score;
+            localStorage.setItem('turbo_highway_highscore', String(highScore));
+          }
+          document.getElementById('gameover-score').innerText = Math.floor(score);
+          document.getElementById('gameover-best').innerText = Math.floor(highScore);
+          gameoverScreen.style.display = 'flex';
+          break;
+        }
+
+        if (obs.y > height + 100) obstacles.splice(i, 1);
+      }
+
+      // Render
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, width, height);
+
+      // Road
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(roadLeft, 0, roadWidth, height);
+
+      // Dashed lane lines
+      ctx.strokeStyle = '#f8fafc';
+      ctx.lineWidth = 3;
+      for (let l = 1; l < 4; l++) {
+        const lx = roadLeft + l * laneWidth;
+        ctx.beginPath();
+        for (let y = (roadOffset % 60) - 60; y < height; y += 60) {
+          ctx.moveTo(lx, y); ctx.lineTo(lx, y + 35);
+        }
+        ctx.stroke();
+      }
+
+      // Obstacles
+      for (const obs of obstacles) {
+        ctx.fillStyle = obs.color;
+        ctx.beginPath();
+        ctx.roundRect(obs.x - obs.w/2, obs.y - obs.h/2, obs.w, obs.h, 8);
+        ctx.fill();
+        // Windshield
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillRect(obs.x - obs.w/2 + 6, obs.y + obs.h/2 - 20, obs.w - 12, 8);
+        // Headlights
+        ctx.fillStyle = '#fef08a';
+        ctx.fillRect(obs.x - obs.w/2 + 4, obs.y + obs.h/2 - 4, 6, 3);
+        ctx.fillRect(obs.x + obs.w/2 - 10, obs.y + obs.h/2 - 4, 6, 3);
+      }
+
+      // Player Car
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      ctx.rotate(player.tilt);
+
+      // Flames when boosting
+      if (isBoosting) {
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillRect(-12, player.h/2, 6, 18 + Math.random()*8);
+        ctx.fillRect(6, player.h/2, 6, 18 + Math.random()*8);
+      }
+
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.roundRect(-player.w/2, -player.h/2, player.w, player.h, 10);
+      ctx.fill();
+
+      // Cabin
+      ctx.fillStyle = '#dc2626';
+      ctx.roundRect(-player.w/2 + 5, -player.h/2 + 20, player.w - 10, player.h - 40, 5);
+      ctx.fill();
+
+      // Windshield
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(-player.w/2 + 7, -player.h/2 + 22, player.w - 14, 10);
+
+      // Headlights
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(-player.w/2 + 4, -player.h/2 + 1, 6, 3);
+      ctx.fillRect(player.w/2 - 10, -player.h/2 + 1, 6, 3);
+
+      ctx.restore();
+
+      // HUD values
+      hudScore.innerText = Math.floor(score);
+      hudSpeed.innerText = Math.round(speed / 4.2);
+      hudNitroVal.innerText = Math.round(boostFuel) + '%';
+      hudNitroBar.style.width = boostFuel + '%';
+    }
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
